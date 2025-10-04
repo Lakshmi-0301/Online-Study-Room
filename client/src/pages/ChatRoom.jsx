@@ -6,6 +6,7 @@ export default function ChatRoom() {
   const { roomId } = useParams();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
+  const [members, setMembers] = useState([]);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -21,9 +22,14 @@ export default function ChatRoom() {
       setMessages((prev) => [...prev, msg]);
     });
 
+    s.on("room_members", (list) => {
+      setMembers(list); // Expects [{ userId, username, online }, ...]
+    });
+
     return () => {
       s.emit("leave_room", { roomCode: roomId });
-      s.off("receive_message"); 
+      s.off("receive_message");
+      s.off("room_members");
       s.disconnect();
     };
   }, [roomId]);
@@ -41,6 +47,25 @@ export default function ChatRoom() {
 
   return (
     <div style={{ padding: "20px" }}>
+      {/* Members List Moved to Top */}
+      <div style={{ borderTop: "1px solid #ccc", paddingTop: "10px", marginBottom: "10px" }}>
+        <h4>
+          Members ({members.filter(m => m.online).length} online):
+        </h4>
+        <ul>
+          {members
+            .sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0)) // Online on top
+            .map((m) => (
+              <li
+                key={m.userId}
+                style={{ color: m.online ? "green" : "gray" }}
+              >
+                {m.username}
+              </li>
+            ))}
+        </ul>
+      </div>
+
       <h2>Room: {roomId}</h2>
       <div
         style={{
@@ -52,8 +77,16 @@ export default function ChatRoom() {
         }}
       >
         {messages.map((m, i) => (
-          <div key={i} style={{ marginBottom: "8px" }}>
-            <b>{m.author}</b> <small>[{m.time}]</small>
+          <div
+            key={i}
+            style={{
+              marginBottom: "8px",
+              fontStyle: m.author === "System" ? "italic" : "normal",
+              color: m.author === "System" ? "gray" : "black",
+            }}
+          >
+            {m.author !== "System" && <b>{m.author}</b>}{" "}
+            {m.author !== "System" && <small>[{m.time}]</small>}
             <div>{m.text}</div>
           </div>
         ))}

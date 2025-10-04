@@ -27,7 +27,7 @@ export function initSocket() {
     const token = localStorage.getItem("token");
     const username = localStorage.getItem("username");
 
-    socket = io("http://localhost:8000", {
+    socket = io("http://localhost:5000", {
       autoConnect: false,
       transports: ["websocket", "polling"],
       auth: { token, username },
