@@ -1,8 +1,10 @@
 // routes/rooms.js
+const mongoose = require("mongoose");
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const Room = require("../models/Room");
 const auth = require("../middleware/auth");
+//const mongoose = require("mongoose");
 
 const router = express.Router();
 
@@ -88,7 +90,10 @@ router.post("/join", auth, async (req, res) => {
     const room = await Room.findOne({ roomId });
     if (!room) return res.status(404).json({ msg: "Room not found" });
 
-    const userId = req.user.id;
+    const userId = new mongoose.Types.ObjectId(req.user.id);
+
+    // debugging 4567890-0987654567890987654567890
+    console.log("Join request userId:", userId, "roomId:", roomId);
 
     // Already a member? (skip capacity check)
     if (room.members.some(m => m.toString() === userId)) {
@@ -108,7 +113,7 @@ router.post("/join", auth, async (req, res) => {
     }
 
     // Add user to members
-    room.members.push(mongoose.Types.ObjectId(userId));
+    room.members.push(new mongoose.Types.ObjectId(userId));
     await room.save();
 
     res.json(sanitizeRoom(room));
@@ -122,25 +127,33 @@ router.post("/join", auth, async (req, res) => {
  * GET /api/rooms/my
  * Protected - get room details (no pin)
  */
-const mongoose = require("mongoose");
 
 router.get("/my", auth, async (req, res) => {
   try {
-    const userId = mongoose.Types.ObjectId(req.user.id);
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ msg: "Unauthorized: no user ID" });
+    }
+    const userId = new mongoose.Types.ObjectId(req.user.id);
     const rooms = await Room.find({ members: userId }).select("-pin");
     res.json(rooms);
   } catch (err) {
+    console.error("GET /rooms/my ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 
+
+/**
+ * GET /api/rooms/:roomId
+ * Protected - get room details (no pin)
+ */
 router.get("/:roomId", auth, async (req, res) => {
   try {
     const { roomId } = req.params;
     const room = await Room.findOne({ roomId })
       .populate("createdBy", "username")
-      .populate("members", "username"); 
+      .populate("members", "username"); // optional: shows usernames
     if (!room) return res.status(404).json({ msg: "Room not found" });
 
     res.json(sanitizeRoom(room));
