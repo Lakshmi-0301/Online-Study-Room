@@ -6,6 +6,7 @@ import ChatRoom from "./pages/ChatRoom";
 import CreateRoom from "./pages/CreateRoom";
 import JoinRoom from "./pages/JoinRoom";
 import Room from "./pages/Room";
+import RoomPage from "./pages/RoomPage";
 function App() {
   return (
     <Router>
@@ -16,7 +17,7 @@ function App() {
         <Route path="/chat/:roomId" element={<ChatRoom />} />
         <Route path="/create-room" element={<CreateRoom />} />
         <Route path="/join-room" element={<JoinRoom />} />
-        <Route path="/room/:roomId" element={<Room />} />
+        <Route path="/room/:roomId" element={<RoomPage />} />
       </Routes>
     </Router>
   );

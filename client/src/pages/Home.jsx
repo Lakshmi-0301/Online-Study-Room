@@ -27,7 +27,7 @@ function Home() {
     const fetchRooms = async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await axios.get("http://localhost:5000/api/rooms/my", {
+        const res = await axios.get("http://localhost:8000/api/rooms/my", {
           headers: { Authorization: `Bearer ${token}` },
         });
         setRooms(res.data);
