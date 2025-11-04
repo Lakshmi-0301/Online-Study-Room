@@ -1,10 +1,10 @@
-
-
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import API from "../services/api";
 import socketService from "../services/socket";
 import FileSharing from "../components/FileSharing";
+import VideoConference from "../components/VideoConference";
+import Whiteboard from "../components/Whiteboard";
 import profileApi from '../services/profileApi';
 
 export default function RoomPage() {
@@ -132,73 +132,90 @@ export default function RoomPage() {
   };
 
   // Fetch room data, user info, and message history
-  // useEffect(() => {
-  //   const fetchRoomAndUser = async () => {
-  //     try {
-  //       const token = localStorage.getItem("token");
-        
-  //       // Fetch room data
-  //       const roomRes = await API.get(`/rooms/${roomId}`, {
-  //         headers: { Authorization: `Bearer ${token}` },
-  //       });
-  //       setRoom(roomRes.data);
-
-  //       // Fetch message history
-  //       await fetchMessageHistory();
-
-  //       // Get current user info
-  //       const userData = JSON.parse(localStorage.getItem("user") || "{}");
-  //       setCurrentUser({
-  //         id: userData.id,
-  //         username: userData.username
-  //       });
-  //     } catch (err) {
-  //       setError(err.response?.data?.msg || "Failed to load room");
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   };
-  //   fetchRoomAndUser();
-  // }, [roomId]);
-  // Fetch room data, user info, and message history
-useEffect(() => {
-  const fetchRoomAndUser = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      
-      // Fetch room data
+  useEffect(() => {
+    const fetchRoomAndUser = async () => {
       try {
-        const roomRes = await API.get(`/rooms/${roomId}`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const token = localStorage.getItem("token");
+        
+        // Fetch room data
+        try {
+          const roomRes = await API.get(`/rooms/${roomId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          setRoom(roomRes.data);
+        } catch (roomErr) {
+          console.error("Error fetching room:", roomErr);
+          setError("Room not found or you don't have access");
+          return;
+        }
+
+        // Fetch message history
+        await fetchMessageHistory();
+
+        // Get current user info
+        const userData = JSON.parse(localStorage.getItem("user") || "{}");
+        setCurrentUser({
+          id: userData.id,
+          username: userData.username
         });
-        setRoom(roomRes.data);
-      } catch (roomErr) {
-        console.error("Error fetching room:", roomErr);
-        setError("Room not found or you don't have access");
-        return;
+      } catch (err) {
+        console.error("Error in fetchRoomAndUser:", err);
+        setError(err.response?.data?.msg || "Failed to load room");
+      } finally {
+        setLoading(false);
       }
-
-      // Fetch message history
-      await fetchMessageHistory();
-
-      // Get current user info
-      const userData = JSON.parse(localStorage.getItem("user") || "{}");
-      setCurrentUser({
-        id: userData.id,
-        username: userData.username
-      });
-    } catch (err) {
-      console.error("Error in fetchRoomAndUser:", err);
-      setError(err.response?.data?.msg || "Failed to load room");
-    } finally {
-      setLoading(false);
+    };
+    
+    if (roomId) {
+      fetchRoomAndUser();
     }
-  };
-  
-  if (roomId) {
-    fetchRoomAndUser();
-  }
-}, [roomId]);
+  }, [roomId]);
+
+  // Study time tracking effect
+  useEffect(() => {
+    let studyTimeInterval;
+    let studyStartTime;
+
+    if (isConnected && room) {
+      // Start tracking study time when user joins room
+      studyStartTime = Date.now();
+
+      studyTimeInterval = setInterval(async () => {
+        const minutesInRoom = Math.floor((Date.now() - studyStartTime) / (1000 * 60));
+        
+        // Track study time every 5 minutes
+        if (minutesInRoom > 0 && minutesInRoom % 5 === 0) {
+          try {
+            await profileApi.addStudyTime(5, roomId, room.name);
+          } catch (error) {
+            console.error('Error tracking study time:', error);
+          }
+        }
+      }, 5 * 60 * 1000); // Check every 5 minutes
+    }
+
+    return () => {
+      if (studyTimeInterval) {
+        clearInterval(studyTimeInterval);
+      }
+      
+      // Track final study time when leaving room
+      if (studyStartTime && room) {
+        const totalMinutes = Math.floor((Date.now() - studyStartTime) / (1000 * 60));
+        if (totalMinutes > 0) {
+          profileApi.addStudyTime(totalMinutes, roomId, room.name)
+            .then(response => {
+              if (response.data.newBadges && response.data.newBadges.length > 0) {
+                console.log('Earned new badges:', response.data.newBadges);
+              }
+            })
+            .catch(error => {
+              console.error('Error tracking final study time:', error);
+            });
+        }
+      }
+    };
+  }, [isConnected, room, roomId]);
 
   // Fetch message history
   const fetchMessageHistory = async (beforeTimestamp = null) => {
@@ -305,50 +322,7 @@ useEffect(() => {
       }
     };
   }, [roomId]);
-useEffect(() => {
-  let studyTimeInterval;
-  let studyStartTime;
 
-  if (isConnected && room) {
-    // Start tracking study time when user joins room
-    studyStartTime = Date.now();
-
-    studyTimeInterval = setInterval(async () => {
-      const minutesInRoom = Math.floor((Date.now() - studyStartTime) / (1000 * 60));
-      
-      // Track study time every 5 minutes
-      if (minutesInRoom > 0 && minutesInRoom % 5 === 0) {
-        try {
-          await profileApi.addStudyTime(5, roomId, room.name);
-        } catch (error) {
-          console.error('Error tracking study time:', error);
-        }
-      }
-    }, 5 * 60 * 1000); // Check every 5 minutes
-  }
-
-  return () => {
-    if (studyTimeInterval) {
-      clearInterval(studyTimeInterval);
-    }
-    
-    // Track final study time when leaving room
-    if (studyStartTime && room) {
-      const totalMinutes = Math.floor((Date.now() - studyStartTime) / (1000 * 60));
-      if (totalMinutes > 0) {
-        profileApi.addStudyTime(totalMinutes, roomId, room.name)
-          .then(response => {
-            if (response.data.newBadges && response.data.newBadges.length > 0) {
-              console.log('Earned new badges:', response.data.newBadges);
-            }
-          })
-          .catch(error => {
-            console.error('Error tracking final study time:', error);
-          });
-      }
-    }
-  };
-}, [isConnected, room, roomId]);
   const sendMessage = (e) => {
     e.preventDefault();
     if (newMessage.trim() && socket && isConnected) {
@@ -658,25 +632,16 @@ useEffect(() => {
           gap: "20px",
           minWidth: 0
         }}>
-          {/* Video Conference Area */}
-          <div style={{ 
-            flex: 2,
-            backgroundColor: "white", 
-            border: "1px solid #e0e0e0",
-            borderRadius: "8px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-            boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-          }}>
-            <div style={{ textAlign: "center", color: "#666" }}>
-              <h3>Video Conference</h3>
-              <p>Video functionality coming soon...</p>
-            </div>
-          </div>
+          {/* Video Conference Component */}
+          <VideoConference 
+            roomId={roomId}
+            socket={socket}
+            currentUser={currentUser}
+            roomMembers={roomMembers}
+            isConnected={isConnected}
+          />
 
-          {/* File Sharing & Notes Area */}
+          {/* File Sharing & Whiteboard Area */}
           <div style={{ 
             flex: 1,
             display: "flex",
@@ -877,38 +842,13 @@ useEffect(() => {
             {/* File Sharing Component */}
             <FileSharing roomCode={roomId} currentUser={currentUser} />
             
-            {/* Shared Notes Area */}
-            <div style={{ 
-              backgroundColor: "white", 
-              border: "1px solid #e0e0e0",
-              borderRadius: "8px",
-              padding: "20px",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-            }}>
-              <h3 style={{ margin: "0 0 15px 0" }}>Shared Notes</h3>
-              <textarea
-                placeholder="Start taking shared notes... (Feature in development)"
-                style={{
-                  width: "100%",
-                  height: "120px",
-                  padding: "12px",
-                  border: "1px solid #e0e0e0",
-                  borderRadius: "4px",
-                  resize: "vertical",
-                  fontSize: "0.9rem",
-                  fontFamily: "inherit"
-                }}
-                disabled
-              />
-              <p style={{ 
-                fontSize: "0.8rem", 
-                color: "#999", 
-                marginTop: "8px",
-                fontStyle: "italic"
-              }}>
-                Collaborative notes feature coming soon
-              </p>
-            </div>
+            {/* Whiteboard Component */}
+            <Whiteboard 
+              roomId={roomId}
+              socket={socket}
+              currentUser={currentUser}
+              isConnected={isConnected}
+            />
           </div>
         </div>
 
