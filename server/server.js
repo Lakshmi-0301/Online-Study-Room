@@ -37,10 +37,10 @@ const io = new Server(server, {
   pingInterval: 25000
 });
 
-// Track room members: { roomCode: [{ userId, username, online }, ...] }
+// Enhanced room members tracking with video/audio status
 const roomMembers = {};
 
-// --- MESSAGE ROTATION FUNCTION (Option 2) ---
+// --- MESSAGE ROTATION FUNCTION ---
 const rotateRoomMessages = async (roomCode, maxMessages = 1000) => {
   try {
     const messageCount = await Message.countDocuments({ roomCode });
@@ -99,71 +99,74 @@ io.on("connection", (socket) => {
     console.log(`🔄 Reconnection attempt ${attemptNumber} for ${socket.user.username}`);
   });
 
-socket.on("join_room", async ({ roomCode }) => {
-  if (!socket.rooms.has(roomCode)) {
-    socket.join(roomCode);
-    
-    // Initialize room members array if it doesn't exist
-    if (!roomMembers[roomCode]) {
-      roomMembers[roomCode] = [];
-    }
-
-    // Check if user already exists in the room
-    const existingMemberIndex = roomMembers[roomCode].findIndex(
-      (m) => m.userId === socket.user.id
-    );
-
-    if (existingMemberIndex === -1) {
-      // Add new user to room
-      roomMembers[roomCode].push({
-        userId: socket.user.id,
-        username: socket.user.username,
-        online: true,
-        socketId: socket.id
-      });
-
-      console.log(`✅ User ${socket.user.username} JOINED room ${roomCode}`);
+  socket.on("join_room", async ({ roomCode }) => {
+    if (!socket.rooms.has(roomCode)) {
+      socket.join(roomCode);
       
-      // Save system message for new joins
-      try {
-        const systemMessage = new Message({
-          roomCode: roomCode,
+      // Initialize room members array if it doesn't exist
+      if (!roomMembers[roomCode]) {
+        roomMembers[roomCode] = [];
+      }
+
+      // Check if user already exists in the room
+      const existingMemberIndex = roomMembers[roomCode].findIndex(
+        (m) => m.userId === socket.user.id
+      );
+
+      if (existingMemberIndex === -1) {
+        // Add new user to room with video/audio status
+        roomMembers[roomCode].push({
+          userId: socket.user.id,
+          username: socket.user.username,
+          online: true,
+          socketId: socket.id,
+          hasVideo: false,  // Initialize video as off
+          hasAudio: true,   // Initialize audio as on
+          isScreenSharing: false
+        });
+
+        console.log(`✅ User ${socket.user.username} JOINED room ${roomCode}`);
+        
+        // Save system message for new joins
+        try {
+          const systemMessage = new Message({
+            roomCode: roomCode,
+            author: "System",
+            userId: "system",
+            text: `${socket.user.username} joined the room`,
+            type: "system"
+          });
+          await systemMessage.save();
+          
+          // Rotate messages after saving system message
+          await rotateRoomMessages(roomCode, 1000);
+        } catch (err) {
+          console.error("Error saving system message:", err);
+        }
+        
+      } else {
+        // Update existing user to online
+        roomMembers[roomCode][existingMemberIndex].online = true;
+        roomMembers[roomCode][existingMemberIndex].socketId = socket.id;
+        console.log(`🔄 User ${socket.user.username} RECONNECTED to room ${roomCode}`);
+      }
+
+      // Emit updated member list to EVERYONE in the room
+      io.to(roomCode).emit("room_members", roomMembers[roomCode]);
+      
+      // Emit system message for new joins only (not reconnects)
+      if (existingMemberIndex === -1) {
+        socket.to(roomCode).emit("receive_message", {
           author: "System",
-          userId: "system",
           text: `${socket.user.username} joined the room`,
+          time: new Date().toLocaleTimeString(),
           type: "system"
         });
-        await systemMessage.save();
-        
-        // Rotate messages after saving system message
-        await rotateRoomMessages(roomCode, 1000);
-      } catch (err) {
-        console.error("Error saving system message:", err);
       }
-      
-    } else {
-      // Update existing user to online
-      roomMembers[roomCode][existingMemberIndex].online = true;
-      roomMembers[roomCode][existingMemberIndex].socketId = socket.id;
-      console.log(`🔄 User ${socket.user.username} RECONNECTED to room ${roomCode}`);
-    }
 
-    // Emit updated member list to EVERYONE in the room
-    io.to(roomCode).emit("room_members", roomMembers[roomCode]);
-    
-    // Emit system message for new joins only (not reconnects)
-    if (existingMemberIndex === -1) {
-      socket.to(roomCode).emit("receive_message", {
-        author: "System",
-        text: `${socket.user.username} joined the room`,
-        time: new Date().toLocaleTimeString(),
-        type: "system"
-      });
+      console.log(`Room ${roomCode} members:`, roomMembers[roomCode].length);
     }
-
-    console.log(`Room ${roomCode} members:`, roomMembers[roomCode].length);
-  }
-});
+  });
 
   // Updated send_message with message rotation
   socket.on("send_message", async ({ roomCode, text }) => {
@@ -207,28 +210,246 @@ socket.on("join_room", async ({ roomCode }) => {
     }
   });
 
-socket.on("leave_room", async ({ roomCode }) => {
-  try {
-    socket.leave(roomCode);
+  socket.on("leave_room", async ({ roomCode }) => {
+    try {
+      socket.leave(roomCode);
 
+      if (roomMembers[roomCode]) {
+        const memberIndex = roomMembers[roomCode].findIndex(
+          (m) => m.userId === socket.user.id
+        );
+
+        if (memberIndex !== -1) {
+          // Notify room that user left (for video cleanup)
+          socket.to(roomCode).emit("user-left", {
+            userId: socket.user.id,
+            username: socket.user.username
+          });
+
+          // Remove user completely from room
+          const leftUser = roomMembers[roomCode].splice(memberIndex, 1)[0];
+          
+          console.log(`❌ User ${leftUser.username} LEFT room ${roomCode}`);
+
+          // Save system message for user leaving
+          try {
+            const systemMessage = new Message({
+              roomCode: roomCode,
+              author: "System",
+              userId: "system",
+              text: `${leftUser.username} left the room`,
+              type: "system"
+            });
+            await systemMessage.save();
+            
+            // Rotate messages after saving system message
+            await rotateRoomMessages(roomCode, 1000);
+          } catch (err) {
+            console.error("Error saving leave message:", err);
+          }
+
+          // Emit system message
+          socket.to(roomCode).emit("receive_message", {
+            author: "System", 
+            text: `${leftUser.username} left the room`,
+            time: new Date().toLocaleTimeString(),
+            type: "system"
+          });
+
+          // Emit updated member list to everyone in room
+          io.to(roomCode).emit("room_members", roomMembers[roomCode]);
+        }
+
+        // Clean up empty rooms
+        if (roomMembers[roomCode].length === 0) {
+          delete roomMembers[roomCode];
+          console.log(`🧹 Room ${roomCode} cleaned up (empty)`);
+        }
+      }
+
+      console.log(`User ${socket.user.username} left room ${roomCode} - socket only`);
+      
+    } catch (err) {
+      console.error("Error in leave_room:", err);
+    }
+  });
+
+  // ==================== WHITEBOARD EVENTS ====================
+
+  // Handle whiteboard drawing
+  socket.on("whiteboard-draw", (data) => {
+    console.log(`🎨 Whiteboard draw from ${socket.user.username} in ${data.roomCode}:`, {
+      type: data.type,
+      x: data.x,
+      y: data.y,
+      color: data.color
+    });
+
+    // Broadcast drawing to all other users in the room
+    socket.to(data.roomCode).emit("whiteboard-draw", {
+      ...data,
+      fromUserId: socket.user.id,
+      fromUsername: socket.user.username
+    });
+  });
+
+  // Handle whiteboard clear
+  socket.on("whiteboard-clear", (data) => {
+    console.log(`🧹 Whiteboard clear by ${socket.user.username} in ${data.roomCode}`);
+    
+    // Broadcast clear to all other users in the room
+    socket.to(data.roomCode).emit("whiteboard-clear", {
+      fromUserId: socket.user.id,
+      fromUsername: socket.user.username
+    });
+  });
+
+  // Handle whiteboard undo
+  socket.on("whiteboard-undo", (data) => {
+    console.log(`⎌ Whiteboard undo by ${socket.user.username} in ${data.roomCode}, historyIndex: ${data.historyIndex}`);
+    
+    // Broadcast undo to all other users in the room
+    socket.to(data.roomCode).emit("whiteboard-undo", {
+      historyIndex: data.historyIndex,
+      fromUserId: socket.user.id,
+      fromUsername: socket.user.username
+    });
+  });
+
+  // Handle whiteboard redo
+  socket.on("whiteboard-redo", (data) => {
+    console.log(`⎌ Whiteboard redo by ${socket.user.username} in ${data.roomCode}, historyIndex: ${data.historyIndex}`);
+    
+    // Broadcast redo to all other users in the room
+    socket.to(data.roomCode).emit("whiteboard-redo", {
+      historyIndex: data.historyIndex,
+      fromUserId: socket.user.id,
+      fromUsername: socket.user.username
+    });
+  });
+
+  // ==================== VIDEO CONFERENCING EVENTS ====================
+
+  // Handle WebRTC offer
+  socket.on("video-offer", ({ roomCode, offer, toUserId }) => {
+    console.log(`📹 Video offer from ${socket.user.username} to ${toUserId} in ${roomCode}`);
+    socket.to(toUserId).emit("video-offer", {
+      offer,
+      fromUserId: socket.user.id,
+      fromUsername: socket.user.username
+    });
+  });
+
+  // Handle WebRTC answer
+  socket.on("video-answer", ({ roomCode, answer, toUserId }) => {
+    console.log(`📹 Video answer from ${socket.user.username} to ${toUserId} in ${roomCode}`);
+    socket.to(toUserId).emit("video-answer", {
+      answer,
+      fromUserId: socket.user.id,
+      fromUsername: socket.user.username
+    });
+  });
+
+  // Handle ICE candidates
+  socket.on("video-ice-candidate", ({ roomCode, candidate, toUserId }) => {
+    socket.to(toUserId).emit("video-ice-candidate", {
+      candidate,
+      fromUserId: socket.user.id
+    });
+  });
+
+  // Handle video toggle (mute/unmute video)
+  socket.on("toggle-video", ({ roomCode, videoEnabled }) => {
+    // Update user's video status in room members
     if (roomMembers[roomCode]) {
       const memberIndex = roomMembers[roomCode].findIndex(
         (m) => m.userId === socket.user.id
       );
+      
+      if (memberIndex !== -1) {
+        roomMembers[roomCode][memberIndex].hasVideo = videoEnabled;
+        
+        // Broadcast updated member list to everyone in the room
+        io.to(roomCode).emit("room_members", roomMembers[roomCode]);
+        
+        console.log(`📹 User ${socket.user.username} ${videoEnabled ? 'enabled' : 'disabled'} video in ${roomCode}`);
+      }
+    }
+  });
+
+  // Handle audio toggle (mute/unmute audio)
+  socket.on("toggle-audio", ({ roomCode, audioEnabled }) => {
+    if (roomMembers[roomCode]) {
+      const memberIndex = roomMembers[roomCode].findIndex(
+        (m) => m.userId === socket.user.id
+      );
+      
+      if (memberIndex !== -1) {
+        roomMembers[roomCode][memberIndex].hasAudio = audioEnabled;
+        io.to(roomCode).emit("room_members", roomMembers[roomCode]);
+        
+        console.log(`🎤 User ${socket.user.username} ${audioEnabled ? 'unmuted' : 'muted'} audio in ${roomCode}`);
+      }
+    }
+  });
+
+  // Notify room when user starts/stops screen sharing
+  socket.on("screen-share", ({ roomCode, isSharing }) => {
+    if (roomMembers[roomCode]) {
+      const memberIndex = roomMembers[roomCode].findIndex(
+        (m) => m.userId === socket.user.id
+      );
+      
+      if (memberIndex !== -1) {
+        roomMembers[roomCode][memberIndex].isScreenSharing = isSharing;
+        io.to(roomCode).emit("room_members", roomMembers[roomCode]);
+        
+        // Broadcast screen share status to room
+        socket.to(roomCode).emit("user-screen-share", {
+          userId: socket.user.id,
+          username: socket.user.username,
+          isSharing: isSharing
+        });
+        
+        console.log(`🖥️ User ${socket.user.username} ${isSharing ? 'started' : 'stopped'} screen share in ${roomCode}`);
+      }
+    }
+  });
+
+  // UPDATE the disconnect handler to save system messages and handle video cleanup
+  socket.on("disconnect", async (reason) => {
+    console.log(`📵 User disconnected: ${socket.user.username} (${reason})`);
+
+    // Remove user from all rooms they were in
+    for (const roomCode in roomMembers) {
+      const memberIndex = roomMembers[roomCode].findIndex(
+        (m) => m.socketId === socket.id
+      );
 
       if (memberIndex !== -1) {
-        // Remove user completely from room (not just mark offline)
-        const leftUser = roomMembers[roomCode].splice(memberIndex, 1)[0];
+        const disconnectedUser = roomMembers[roomCode][memberIndex];
         
-        console.log(`❌ User ${leftUser.username} LEFT room ${roomCode}`);
+        // Notify room for video cleanup
+        socket.to(roomCode).emit("user-left", {
+          userId: socket.user.id,
+          username: socket.user.username
+        });
+        
+        // Mark user as offline instead of removing completely
+        roomMembers[roomCode][memberIndex].online = false;
+        roomMembers[roomCode][memberIndex].socketId = null;
+        roomMembers[roomCode][memberIndex].hasVideo = false;
+        roomMembers[roomCode][memberIndex].isScreenSharing = false;
+        
+        console.log(`🔴 User ${disconnectedUser.username} DISCONNECTED from room ${roomCode}`);
 
-        // Save system message for user leaving
+        // Save system message for disconnect
         try {
           const systemMessage = new Message({
             roomCode: roomCode,
             author: "System",
             userId: "system",
-            text: `${leftUser.username} left the room`,
+            text: `${disconnectedUser.username} disconnected`,
             type: "system"
           });
           await systemMessage.save();
@@ -236,89 +457,25 @@ socket.on("leave_room", async ({ roomCode }) => {
           // Rotate messages after saving system message
           await rotateRoomMessages(roomCode, 1000);
         } catch (err) {
-          console.error("Error saving leave message:", err);
+          console.error("Error saving disconnect message:", err);
         }
 
-        // Emit system message
+        // Notify room
         socket.to(roomCode).emit("receive_message", {
-          author: "System", 
-          text: `${leftUser.username} left the room`,
+          author: "System",
+          text: `${disconnectedUser.username} disconnected`,
           time: new Date().toLocaleTimeString(),
           type: "system"
         });
 
-        // Emit updated member list to everyone in room
+        // Send updated member list to show user as offline
         io.to(roomCode).emit("room_members", roomMembers[roomCode]);
-      }
 
-      // Clean up empty rooms
-      if (roomMembers[roomCode].length === 0) {
-        delete roomMembers[roomCode];
-        console.log(`🧹 Room ${roomCode} cleaned up (empty)`);
+        // Don't clean up empty rooms immediately on disconnect
+        // Wait for explicit leave_room event
       }
     }
-
-    console.log(`User ${socket.user.username} left room ${roomCode} - socket only`);
-    
-  } catch (err) {
-    console.error("Error in leave_room:", err);
-  }
-});
-
-// UPDATE the disconnect handler to save system messages
-socket.on("disconnect", async (reason) => {
-  console.log(`📵 User disconnected: ${socket.user.username} (${reason})`);
-
-  // Remove user from all rooms they were in
-  for (const roomCode in roomMembers) {
-    const memberIndex = roomMembers[roomCode].findIndex(
-      (m) => m.socketId === socket.id
-    );
-
-    if (memberIndex !== -1) {
-      const disconnectedUser = roomMembers[roomCode][memberIndex];
-      
-      // Mark user as offline instead of removing completely
-      // This allows them to reconnect without leaving the room permanently
-      roomMembers[roomCode][memberIndex].online = false;
-      roomMembers[roomCode][memberIndex].socketId = null;
-      
-      console.log(`🔴 User ${disconnectedUser.username} DISCONNECTED from room ${roomCode}`);
-
-      // Save system message for disconnect
-      try {
-        const systemMessage = new Message({
-          roomCode: roomCode,
-          author: "System",
-          userId: "system",
-          text: `${disconnectedUser.username} disconnected`,
-          type: "system"
-        });
-        await systemMessage.save();
-        
-        // Rotate messages after saving system message
-        await rotateRoomMessages(roomCode, 1000);
-      } catch (err) {
-        console.error("Error saving disconnect message:", err);
-      }
-
-      // Notify room
-      socket.to(roomCode).emit("receive_message", {
-        author: "System",
-        text: `${disconnectedUser.username} disconnected`,
-        time: new Date().toLocaleTimeString(),
-        type: "system"
-      });
-
-      // Send updated member list to show user as offline
-      io.to(roomCode).emit("room_members", roomMembers[roomCode]);
-
-      // Don't clean up empty rooms immediately on disconnect
-      // Wait for explicit leave_room event
-    }
-  }
-});
-
+  });
 
   socket.on("typing_start", ({ roomCode }) => {
     socket.to(roomCode).emit("user_typing", {
@@ -374,15 +531,16 @@ app.use("/api/files", filesRoutes);
 const messagesRoutes = require("./routes/messages");
 app.use("/api/messages", messagesRoutes);
 
-// Serve uploaded files statically
-app.use("/uploads", express.static("uploads"));
-
 // Study time tracking routes
 const studyTimeRoutes = require("./routes/studyTime");
 app.use("/api/study-time", studyTimeRoutes);
 
 const profileRoutes = require("./routes/profile");
 app.use("/api/profile", profileRoutes);
+
+// Serve uploaded files statically
+app.use("/uploads", express.static("uploads"));
+
 // Optional: Add endpoint to get room stats (for debugging)
 app.get("/api/room-stats", (req, res) => {
   const stats = {};

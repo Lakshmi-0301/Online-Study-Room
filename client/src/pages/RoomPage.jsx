@@ -6,7 +6,7 @@ import FileSharing from "../components/FileSharing";
 import VideoConference from "../components/VideoConference";
 import Whiteboard from "../components/Whiteboard";
 import profileApi from '../services/profileApi';
-
+import "../styles/RoomPage.module.css";
 export default function RoomPage() {
   const { roomId } = useParams();
   const navigate = useNavigate();

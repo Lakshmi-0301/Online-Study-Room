@@ -41,6 +41,10 @@ const Profile = () => {
     navigate('/profile/edit');
   };
 
+  const handleGoBack = () => {
+    navigate('/home');
+  };
+
   const renderTabContent = () => {
     if (!profile) return null;
 
@@ -133,6 +137,18 @@ const Profile = () => {
   return (
     <div className="profile-page">
       <div className="profile-container">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 2rem', background: '#16162e', borderBottom: '1px solid rgba(108, 92, 231, 0.2)' }}>
+          <button onClick={handleGoBack} className="back-button" title="Back to Home">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M19 12H5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M12 19L5 12L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Back to Home
+          </button>
+          <h2 style={{ margin: 0, color: '#e5e5e5', fontSize: '1.3rem' }}>My Profile</h2>
+          <div style={{ width: '120px' }}></div>
+        </div>
+
         <ProfileHeader 
           profile={profile}
           isOwnProfile={true}
