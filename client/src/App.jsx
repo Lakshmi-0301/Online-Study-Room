@@ -5,7 +5,6 @@ import Home from "./pages/Home";
 import ChatRoom from "./pages/ChatRoom";
 import CreateRoom from "./pages/CreateRoom";
 import JoinRoom from "./pages/JoinRoom";
-import Room from "./pages/Room";
 import RoomPage from "./pages/RoomPage";
 import Profile from "./pages/Profile"; 
 import EditProfile from "./pages/EditProfile";

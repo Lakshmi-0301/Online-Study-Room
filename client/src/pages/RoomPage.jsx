@@ -5,8 +5,9 @@ import socketService from "../services/socket";
 import FileSharing from "../components/FileSharing";
 import VideoConference from "../components/VideoConference";
 import Whiteboard from "../components/Whiteboard";
+import FocusSounds from "../components/FocusSounds";
 import profileApi from '../services/profileApi';
-import "../styles/RoomPage.module.css";
+
 export default function RoomPage() {
   const { roomId } = useParams();
   const navigate = useNavigate();
@@ -138,16 +139,10 @@ export default function RoomPage() {
         const token = localStorage.getItem("token");
         
         // Fetch room data
-        try {
-          const roomRes = await API.get(`/rooms/${roomId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          setRoom(roomRes.data);
-        } catch (roomErr) {
-          console.error("Error fetching room:", roomErr);
-          setError("Room not found or you don't have access");
-          return;
-        }
+        const roomRes = await API.get(`/rooms/${roomId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setRoom(roomRes.data);
 
         // Fetch message history
         await fetchMessageHistory();
@@ -159,63 +154,13 @@ export default function RoomPage() {
           username: userData.username
         });
       } catch (err) {
-        console.error("Error in fetchRoomAndUser:", err);
         setError(err.response?.data?.msg || "Failed to load room");
       } finally {
         setLoading(false);
       }
     };
-    
-    if (roomId) {
-      fetchRoomAndUser();
-    }
+    fetchRoomAndUser();
   }, [roomId]);
-
-  // Study time tracking effect
-  useEffect(() => {
-    let studyTimeInterval;
-    let studyStartTime;
-
-    if (isConnected && room) {
-      // Start tracking study time when user joins room
-      studyStartTime = Date.now();
-
-      studyTimeInterval = setInterval(async () => {
-        const minutesInRoom = Math.floor((Date.now() - studyStartTime) / (1000 * 60));
-        
-        // Track study time every 5 minutes
-        if (minutesInRoom > 0 && minutesInRoom % 5 === 0) {
-          try {
-            await profileApi.addStudyTime(5, roomId, room.name);
-          } catch (error) {
-            console.error('Error tracking study time:', error);
-          }
-        }
-      }, 5 * 60 * 1000); // Check every 5 minutes
-    }
-
-    return () => {
-      if (studyTimeInterval) {
-        clearInterval(studyTimeInterval);
-      }
-      
-      // Track final study time when leaving room
-      if (studyStartTime && room) {
-        const totalMinutes = Math.floor((Date.now() - studyStartTime) / (1000 * 60));
-        if (totalMinutes > 0) {
-          profileApi.addStudyTime(totalMinutes, roomId, room.name)
-            .then(response => {
-              if (response.data.newBadges && response.data.newBadges.length > 0) {
-                console.log('Earned new badges:', response.data.newBadges);
-              }
-            })
-            .catch(error => {
-              console.error('Error tracking final study time:', error);
-            });
-        }
-      }
-    };
-  }, [isConnected, room, roomId]);
 
   // Fetch message history
   const fetchMessageHistory = async (beforeTimestamp = null) => {
@@ -322,6 +267,52 @@ export default function RoomPage() {
       }
     };
   }, [roomId]);
+
+  // Study time tracking effect
+useEffect(() => {
+  let studyTimeInterval;
+  let studyStartTime;
+
+  if (isConnected && room) {
+    // Start tracking study time when user joins room
+    studyStartTime = Date.now();
+
+    studyTimeInterval = setInterval(async () => {
+      const minutesInRoom = Math.floor((Date.now() - studyStartTime) / (1000 * 60));
+      
+      // Track study time every 5 minutes
+      if (minutesInRoom > 0 && minutesInRoom % 5 === 0) {
+        try {
+          await profileApi.addStudyTime(5, roomId, room.name);
+        } catch (error) {
+          console.error('Error tracking study time:', error);
+        }
+      }
+    }, 5 * 60 * 1000); // Check every 5 minutes
+  }
+
+  return () => {
+    if (studyTimeInterval) {
+      clearInterval(studyTimeInterval);
+    }
+    
+    // Track final study time when leaving room
+    if (studyStartTime && room) {
+      const totalMinutes = Math.floor((Date.now() - studyStartTime) / (1000 * 60));
+      if (totalMinutes > 0) {
+        profileApi.addStudyTime(totalMinutes, roomId, room.name)
+          .then(response => {
+            if (response.data.newBadges && response.data.newBadges.length > 0) {
+              console.log('Earned new badges:', response.data.newBadges);
+            }
+          })
+          .catch(error => {
+            console.error('Error tracking final study time:', error);
+          });
+      }
+    }
+  };
+}, [isConnected, room, roomId]);
 
   const sendMessage = (e) => {
     e.preventDefault();
@@ -649,7 +640,7 @@ export default function RoomPage() {
             gap: "20px",
             minWidth: 0
           }}>
-            {/* Pomodoro Timer */}
+            {/* Pomodoro Timer with Focus Sounds */}
             <div style={{ 
               backgroundColor: "white", 
               border: "1px solid #e0e0e0",
@@ -774,6 +765,27 @@ export default function RoomPage() {
                 </div>
               )}
               
+              {/* Focus Sounds Integration */}
+              <div style={{ 
+                display: "flex", 
+                justifyContent: "space-between", 
+                alignItems: "center",
+                marginBottom: "15px",
+                padding: "10px",
+                backgroundColor: "#f8f9fa",
+                borderRadius: "6px",
+                border: "1px solid #e9ecef"
+              }}>
+                <div style={{ fontSize: "0.9rem", color: "#666" }}>
+                  <strong>Completed Cycles:</strong> {pomodoroCycles}
+                  <br />
+                  <span style={{ fontSize: "0.8rem" }}>
+                    Current: {workDuration}min work / {breakDuration}min break
+                  </span>
+                </div>
+                <FocusSounds />
+              </div>
+              
               <div style={{ textAlign: "center", marginBottom: "15px" }}>
                 <div style={{ 
                   fontSize: "2.5rem", 
@@ -782,11 +794,6 @@ export default function RoomPage() {
                   marginBottom: "10px"
                 }}>
                   {formatTime(pomodoroTime)}
-                </div>
-                <div style={{ fontSize: "0.8rem", color: "#666", marginBottom: "15px" }}>
-                  Completed Cycles: {pomodoroCycles}
-                  <br />
-                  Current: {workDuration}min work / {breakDuration}min break
                 </div>
               </div>
 

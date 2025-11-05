@@ -32,12 +32,11 @@ const io = new Server(server, {
     origin: "http://localhost:5173", 
     methods: ["GET", "POST"],
   },
-  // Add better connection settings to match frontend
   pingTimeout: 60000,
   pingInterval: 25000
 });
 
-// Enhanced room members tracking with video/audio status
+//room members tracking with video/audio status
 const roomMembers = {};
 
 // --- MESSAGE ROTATION FUNCTION ---
@@ -90,13 +89,13 @@ io.use((socket, next) => {
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.user.username} (ID: ${socket.user.id})`);
 
-  // Add reconnection event handlers to match frontend
+  // Add reconnection event handlers 
   socket.on("reconnect", (attemptNumber) => {
-    console.log(`🔄 User ${socket.user.username} reconnected (attempt ${attemptNumber})`);
+    console.log(`User ${socket.user.username} reconnected (attempt ${attemptNumber})`);
   });
 
   socket.on("reconnect_attempt", (attemptNumber) => {
-    console.log(`🔄 Reconnection attempt ${attemptNumber} for ${socket.user.username}`);
+    console.log(`Reconnection attempt ${attemptNumber} for ${socket.user.username}`);
   });
 
   socket.on("join_room", async ({ roomCode }) => {
@@ -125,7 +124,7 @@ io.on("connection", (socket) => {
           isScreenSharing: false
         });
 
-        console.log(`✅ User ${socket.user.username} JOINED room ${roomCode}`);
+        console.log(`User ${socket.user.username} JOINED room ${roomCode}`);
         
         // Save system message for new joins
         try {
@@ -148,7 +147,7 @@ io.on("connection", (socket) => {
         // Update existing user to online
         roomMembers[roomCode][existingMemberIndex].online = true;
         roomMembers[roomCode][existingMemberIndex].socketId = socket.id;
-        console.log(`🔄 User ${socket.user.username} RECONNECTED to room ${roomCode}`);
+        console.log(`User ${socket.user.username} RECONNECTED to room ${roomCode}`);
       }
 
       // Emit updated member list to EVERYONE in the room
@@ -229,7 +228,7 @@ io.on("connection", (socket) => {
           // Remove user completely from room
           const leftUser = roomMembers[roomCode].splice(memberIndex, 1)[0];
           
-          console.log(`❌ User ${leftUser.username} LEFT room ${roomCode}`);
+          console.log(`User ${leftUser.username} LEFT room ${roomCode}`);
 
           // Save system message for user leaving
           try {
@@ -276,63 +275,58 @@ io.on("connection", (socket) => {
 
   // ==================== WHITEBOARD EVENTS ====================
 
-  // Handle whiteboard drawing
-  socket.on("whiteboard-draw", (data) => {
-    console.log(`🎨 Whiteboard draw from ${socket.user.username} in ${data.roomCode}:`, {
-      type: data.type,
-      x: data.x,
-      y: data.y,
-      color: data.color
-    });
+// Handle whiteboard drawing
+socket.on("whiteboard-draw", (data) => {
 
-    // Broadcast drawing to all other users in the room
-    socket.to(data.roomCode).emit("whiteboard-draw", {
-      ...data,
-      fromUserId: socket.user.id,
-      fromUsername: socket.user.username
-    });
+  // Broadcast drawing to all other users in the room
+  socket.to(data.roomCode).emit("whiteboard-draw", {
+    ...data,
+    fromUserId: socket.user.id,
+    fromUsername: socket.user.username
   });
+});
 
-  // Handle whiteboard clear
-  socket.on("whiteboard-clear", (data) => {
-    console.log(`🧹 Whiteboard clear by ${socket.user.username} in ${data.roomCode}`);
-    
-    // Broadcast clear to all other users in the room
-    socket.to(data.roomCode).emit("whiteboard-clear", {
-      fromUserId: socket.user.id,
-      fromUsername: socket.user.username
-    });
+// Handle whiteboard clear
+socket.on("whiteboard-clear", (data) => {
+  console.log(`Whiteboard clear by ${socket.user.username} in ${data.roomCode}`);
+  
+  // Broadcast clear to all other users in the room
+  socket.to(data.roomCode).emit("whiteboard-clear", {
+    fromUserId: socket.user.id,
+    fromUsername: socket.user.username
   });
+});
 
-  // Handle whiteboard undo
-  socket.on("whiteboard-undo", (data) => {
-    console.log(`⎌ Whiteboard undo by ${socket.user.username} in ${data.roomCode}, historyIndex: ${data.historyIndex}`);
-    
-    // Broadcast undo to all other users in the room
-    socket.to(data.roomCode).emit("whiteboard-undo", {
-      historyIndex: data.historyIndex,
-      fromUserId: socket.user.id,
-      fromUsername: socket.user.username
-    });
+// Handle whiteboard undo
+socket.on("whiteboard-undo", (data) => {
+  console.log(`⎌ Whiteboard undo by ${socket.user.username} in ${data.roomCode}, historyIndex: ${data.historyIndex}`);
+  
+  // Broadcast undo to all other users in the room
+  socket.to(data.roomCode).emit("whiteboard-undo", {
+    historyIndex: data.historyIndex,
+    fromUserId: socket.user.id,
+    fromUsername: socket.user.username
   });
+});
 
-  // Handle whiteboard redo
-  socket.on("whiteboard-redo", (data) => {
-    console.log(`⎌ Whiteboard redo by ${socket.user.username} in ${data.roomCode}, historyIndex: ${data.historyIndex}`);
-    
-    // Broadcast redo to all other users in the room
-    socket.to(data.roomCode).emit("whiteboard-redo", {
-      historyIndex: data.historyIndex,
-      fromUserId: socket.user.id,
-      fromUsername: socket.user.username
-    });
+// Handle whiteboard redo
+socket.on("whiteboard-redo", (data) => {
+  console.log(`⎌ Whiteboard redo by ${socket.user.username} in ${data.roomCode}, historyIndex: ${data.historyIndex}`);
+  
+  // Broadcast redo to all other users in the room
+  socket.to(data.roomCode).emit("whiteboard-redo", {
+    historyIndex: data.historyIndex,
+    fromUserId: socket.user.id,
+    fromUsername: socket.user.username
   });
+});
+
 
   // ==================== VIDEO CONFERENCING EVENTS ====================
 
   // Handle WebRTC offer
   socket.on("video-offer", ({ roomCode, offer, toUserId }) => {
-    console.log(`📹 Video offer from ${socket.user.username} to ${toUserId} in ${roomCode}`);
+    console.log(`Video offer from ${socket.user.username} to ${toUserId} in ${roomCode}`);
     socket.to(toUserId).emit("video-offer", {
       offer,
       fromUserId: socket.user.id,
@@ -342,7 +336,7 @@ io.on("connection", (socket) => {
 
   // Handle WebRTC answer
   socket.on("video-answer", ({ roomCode, answer, toUserId }) => {
-    console.log(`📹 Video answer from ${socket.user.username} to ${toUserId} in ${roomCode}`);
+    console.log(`Video answer from ${socket.user.username} to ${toUserId} in ${roomCode}`);
     socket.to(toUserId).emit("video-answer", {
       answer,
       fromUserId: socket.user.id,
@@ -372,7 +366,7 @@ io.on("connection", (socket) => {
         // Broadcast updated member list to everyone in the room
         io.to(roomCode).emit("room_members", roomMembers[roomCode]);
         
-        console.log(`📹 User ${socket.user.username} ${videoEnabled ? 'enabled' : 'disabled'} video in ${roomCode}`);
+        console.log(`User ${socket.user.username} ${videoEnabled ? 'enabled' : 'disabled'} video in ${roomCode}`);
       }
     }
   });
@@ -388,7 +382,7 @@ io.on("connection", (socket) => {
         roomMembers[roomCode][memberIndex].hasAudio = audioEnabled;
         io.to(roomCode).emit("room_members", roomMembers[roomCode]);
         
-        console.log(`🎤 User ${socket.user.username} ${audioEnabled ? 'unmuted' : 'muted'} audio in ${roomCode}`);
+        console.log(`User ${socket.user.username} ${audioEnabled ? 'unmuted' : 'muted'} audio in ${roomCode}`);
       }
     }
   });
@@ -411,14 +405,14 @@ io.on("connection", (socket) => {
           isSharing: isSharing
         });
         
-        console.log(`🖥️ User ${socket.user.username} ${isSharing ? 'started' : 'stopped'} screen share in ${roomCode}`);
+        console.log(`User ${socket.user.username} ${isSharing ? 'started' : 'stopped'} screen share in ${roomCode}`);
       }
     }
   });
 
   // UPDATE the disconnect handler to save system messages and handle video cleanup
   socket.on("disconnect", async (reason) => {
-    console.log(`📵 User disconnected: ${socket.user.username} (${reason})`);
+    console.log(`User disconnected: ${socket.user.username} (${reason})`);
 
     // Remove user from all rooms they were in
     for (const roomCode in roomMembers) {
@@ -441,7 +435,7 @@ io.on("connection", (socket) => {
         roomMembers[roomCode][memberIndex].hasVideo = false;
         roomMembers[roomCode][memberIndex].isScreenSharing = false;
         
-        console.log(`🔴 User ${disconnectedUser.username} DISCONNECTED from room ${roomCode}`);
+        console.log(`User ${disconnectedUser.username} DISCONNECTED from room ${roomCode}`);
 
         // Save system message for disconnect
         try {
@@ -531,6 +525,9 @@ app.use("/api/files", filesRoutes);
 const messagesRoutes = require("./routes/messages");
 app.use("/api/messages", messagesRoutes);
 
+// Serve uploaded files statically
+app.use("/uploads", express.static("uploads"));
+
 // Study time tracking routes
 const studyTimeRoutes = require("./routes/studyTime");
 app.use("/api/study-time", studyTimeRoutes);
@@ -538,10 +535,6 @@ app.use("/api/study-time", studyTimeRoutes);
 const profileRoutes = require("./routes/profile");
 app.use("/api/profile", profileRoutes);
 
-// Serve uploaded files statically
-app.use("/uploads", express.static("uploads"));
-
-// Optional: Add endpoint to get room stats (for debugging)
 app.get("/api/room-stats", (req, res) => {
   const stats = {};
   for (const roomCode in roomMembers) {
