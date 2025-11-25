@@ -1,6 +1,6 @@
 # Online Study Room 
 
-A collaborative virtual study platform built with the MERN stack (MongoDB, Express.js, React, Node.js) that enables students and learners to connect, study together, and track their progress in real-time.
+The Online Study Room is a MERN stack web application designed for virtual collaborative learning. It enables real-time interaction through integrated video conferencing, chat, and a shared whiteboard. The platform includes productivity tools like a Pomodoro timer and focus sounds to enhance concentration. Users can track their study progress with detailed statistics and achievement badges. The system uses Socket.io for live synchronization and RESTful APIs for data management.
 
 ## Tech Stack
 
